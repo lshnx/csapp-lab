@@ -79,35 +79,40 @@ int main() {
 
 ### 2.63 · 用逻辑右移实现算术右移
 
-**题目**：在允许使用逻辑右移但不保证算术右移的机器上，实现 `sra`——算术右移 k 位。再用 `sra` 实现 `srl`——逻辑右移。
+**题目**：只允许使用**逻辑右移**（不保证算术右移）的机器上，实现 `sra`——算术右移 k 位；只允许使用**算术右移**的机器上，实现 `srl`——逻辑右移 k 位。
 
 **答案**：
 ```c
 #include <stdio.h>
+#include <limits.h>
 
-/* 算术右移：高位补符号位 */
-unsigned sra(int x, int k) {
-    int xsrl = (unsigned) x >> k;  // 逻辑右移
-    int w = sizeof(int) << 3;       // w = 32
-    // 若 x<0 且 k>0，需把高位补 1
-    int mask = (int) -1 << (w - k); // 高 k 位为 1，低(w-k)位为 0
-    // 若 x>=0，mask 应该为 0（不补任何 1）
-    int m = 1 << (w - 1);           // 符号位掩码
-    mask &= !(x & m) - 1;           // x>=0 时 mask 清零的魔法
-    return xsrl | mask;
+/* 算术右移：高位补符号位（只许用逻辑右移 + 按位运算） */
+int sra(int x, int k) {
+    unsigned xsrl = (unsigned) x >> k;    // 逻辑右移，高 k 位是 0
+    int w = sizeof(int) << 3;             // w = 32
+    // 高 k 位全 1 的掩码；k=0 时取 0（避免 << 32 的未定义行为）
+    unsigned mask = k ? ~0U << (w - k) : 0;
+    // 负数 → -1（全 1，掩码生效）；非负 → 0（不补任何 1）
+    int is_neg = (int)((unsigned) x >> (w - 1)) ? -1 : 0;
+    mask &= (unsigned) is_neg;
+    return (int)(xsrl | mask);
 }
 
-/* 逻辑右移：高位补 0 */
+/* 逻辑右移：高位补 0（只许用算术右移 + 按位运算） */
 unsigned srl(unsigned x, int k) {
-    unsigned xsra = (int) x >> k;  // 算术右移
-    int w = sizeof(int) << 3;
-    int mask = (int) -1 << (w - k); // 高 k 位掩码
-    mask &= 0;                       // TODO: 留给你完成
-    return xsra & ~mask;            // 把符号位延伸的部分清零
+    unsigned xsra = (int) x >> k;         // 算术右移，负数时高 k 位是 1
+    // 低 (w-k) 位全 1 的掩码：把符号位延伸的高 k 位清零；k=0 时全 1，原样返回
+    unsigned mask = ~0U >> k;
+    return xsra & mask;
 }
 
 int main() {
-    printf("sra(-128, 2) = %d  (expect -32)\n", sra(-128, 2));
+    printf("sra(-128, 2) = %d   (expect %d)\n", sra(-128, 2), -128 >> 2);
+    printf("sra(INT_MIN, 1) = %d (expect %d)\n", sra(INT_MIN, 1), INT_MIN >> 1);
+    printf("sra(64, 2) = %d    (expect %d)\n", sra(64, 2), 64 >> 2);
+    printf("srl(0x80000000u, 4) = 0x%X (expect 0x8000000)\n",
+           srl(0x80000000u, 4), 0x80000000u >> 4);
+    printf("srl(64u, 2) = %u   (expect %u)\n", srl(64u, 2), 64u >> 2);
     return 0;
 }
 ```
@@ -306,9 +311,10 @@ int main() {
 
 int divide_power2(int x, int k) {
     // 负数需要加偏置 (1<<k)-1
-    int is_neg = (unsigned) x >> ((sizeof(int) << 3) - 1);  // 0 or -1
+    // 注意：(unsigned)x >> 31 得到的是 0 或 1，要转成 0 或 -1（全 1）才能当掩码用
+    int is_neg = (int)((unsigned) x >> ((sizeof(int) << 3) - 1)) ? -1 : 0;
     int bias = (1 << k) - 1;
-    // is_neg 为 -1（全 1）时 bias 生效，为 0 时 bias 被 mask 清掉
+    // is_neg 为 -1（全 1）时 bias 生效，为 0 时 bias 被掩码清掉
     return (x + (is_neg & bias)) >> k;
 }
 
