@@ -1,7 +1,9 @@
 # 大二上规划 · 三模块项目（2026/9 — 2027/1）
 
 > 一个仓库，三个产品：自研 allocator → mini-Tensor 库 → GEMM 优化。
-> 简历一句话：「C 实现 CPU 张量库，存储后端为自研 allocator（对齐 ptmalloc），GEMM 分块/SIMD/多线程优化」。
+> 简历一句话：「C 实现 CPU 张量库，存储后端为自研 allocator（free list + 边界合并 + 分箱优化，对比 ptmalloc 差距分析），GEMM 分块/SIMD/多线程优化」。
+>
+> ⚠️ 目标不是"达到 ptmalloc 水平"（那是 30 年工业工程，不可能也不必要）——目标是**读懂 ptmalloc 核心设计、移植 1 个机制（分箱）、能讲清差距**。
 
 ---
 
