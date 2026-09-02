@@ -28,7 +28,7 @@ csapp-lab/
 ## 验收标准（三个数字，缺一个就不算完成）
 
 1. **GEMM 提速表**：naive → +分块 → +SIMD → +多线程，每一级提速都有 benchmark 数字和"为什么快"的解释
-2. **allocator 测试**：随机 10000 次 alloc/free/realloc 零错误，valgrind/ASan 零泄漏
+2. **allocator 测试**：随机 10000 次 alloc/free/realloc 零错误，valgrind/ASan 零泄漏；**Malloc Lab 官方 mdriver 评分 ≥ 85**（handout 已就位：`labs/malloclab/`，在 Ubuntu 上跑）
 3. **ptmalloc 对比文档**：能讲清我的合并策略 vs glibc 的 bins 设计，至少 3 个具体差异
 
 ---
