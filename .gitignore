@@ -6,3 +6,6 @@ a.out
 
 # 编辑器
 *.swp
+
+# malloc lab 编译产物
+labs/malloclab/mdriver
