@@ -27,6 +27,8 @@ csapp-lab/
 
 ## 验收标准（三个数字，缺一个就不算完成）
 
+> **知识验收铁律**：代码跑通但讲不清"为什么"= 没学会，不算完成。每个模块完成时要能**脱离代码**讲一遍核心设计并回答追问（例：边界标记为什么放在块两端？GEMM 分块为什么快？）。读线与写线绑定——项目是知识的应用题；严禁网上抄实现（书 §9.9 就是官方答案，抄 = 零知识）。
+
 1. **GEMM 提速表**：naive → +分块 → +SIMD → +多线程，每一级提速都有 benchmark 数字和"为什么快"的解释
 2. **allocator 测试**：随机 10000 次 alloc/free/realloc 零错误，valgrind/ASan 零泄漏；**Malloc Lab 官方 mdriver 评分 ≥ 85**（handout 已就位：`labs/malloclab/`，在 Ubuntu 上跑）
 3. **ptmalloc 对比文档**：能讲清我的合并策略 vs glibc 的 bins 设计，至少 3 个具体差异
