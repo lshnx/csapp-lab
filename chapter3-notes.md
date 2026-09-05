@@ -904,4 +904,131 @@ sum_to:
 | 条件跳转能间接跳转吗？ | 不能——只有 jmp 支持 |
 | 书后练习 3.15 | je/jb/ja 目标计算，同一规则，跟 objdump 对照自查 |
 
-> 下节预告：3.6.5 用条件控制实现条件分支——if/else 的完整翻译（goto 版本），前面三节的所有零件第一次组装起来。
+### 3.6.5 用条件控制来实现条件分支
+
+**这一节做什么**：3.6.1 的条件码、3.6.3 的跳转、3.6.4 的编码，在这里第一次组装成完整功能——把 C 的 if/else 翻译成汇编。学完的标准：拿到任何 if/else，心里能默写出它的汇编骨架。
+
+#### 通用模板：if/else → goto → 汇编
+
+翻译分两步，第一步是把它改写成 goto 版（思维工具，编译器不会真跑一遍这个 C）：
+
+```c
+/* C 原文 */                        /* goto 版 */
+if (test-expr)                      t = test-expr;
+    then-statement                  if (!t)          // 条件取反！
+else                                    goto false;
+    else-statement                  then-statement
+                                    goto done;
+                                 false:
+                                    else-statement
+                                 done:
+```
+
+**为什么必须取反？** CPU 只有"条件跳"，没有"条件执行"——想要"为真才执行 then"，唯一的办法是"为假时跳过去"。这是本节最重要的一句话。
+
+#### 书上的例子：absdiff_se（Figure 3.13）
+
+```c
+long lt_cnt = 0, ge_cnt = 0;
+long absdiff_se(long x, long y) {
+    long result;
+    if (x < y) { lt_cnt++; result = y - x; }   /* then */
+    else       { ge_cnt++; result = x - y; }   /* else */
+    return result;
+}
+```
+
+汇编（Linux 版，x 在 %rdi，y 在 %rsi）：
+
+```asm
+    cmpq    %rsi, %rdi         # 比较 x:y → 设条件码
+    jge     .L2                # x >= y → 跳去 else（C 是 x<y，取反）
+    addq    $1, lt_cnt(%rip)   # lt_cnt++（rip 相对寻址全局变量）
+    movq    %rsi, %rax
+    subq    %rdi, %rax         # result = y - x
+    ret
+.L2:
+    addq    $1, ge_cnt(%rip)
+    movq    %rdi, %rax
+    subq    %rsi, %rax         # result = x - y
+    ret
+```
+
+观察：① 条件取反（C 测 x<y，汇编测 x>=y 决定跳不跳）；② 两个分支各以 ret 结尾——then 块末尾没有 jmp，因为"完成"就是返回，gcc 把公共尾巴复制进了每个分支（这里就是两个 ret）。
+
+#### 你机器上的真实版本（practice/absdiff.c，MinGW -Og）
+
+```c
+long absdiff(long x, long y) {
+    long result;
+    if (x > y) result = x - y;
+    else       result = y - x;
+    return result;
+}
+```
+
+你的 objdump（%ecx=x，%edx=y，Windows 上 long 是 4 字节）：
+
+```asm
+absdiff:
+   0:  39 d1        cmp   %edx,%ecx     # 比较 x:y
+   2:  7e 05        jle   9             # x <= y → 跳去 else（x>y 取反）
+   4:  89 c8        mov   %ecx,%eax
+   6:  29 d0        sub   %edx,%eax     # result = x - y
+   8:  c3           retq                # then 直接返回
+   9:  89 d0        mov   %edx,%eax
+   b:  29 c8        sub   %ecx,%eax     # result = y - x
+   d:  eb f9        jmp   8             # 跳回 8（公共的 ret）
+```
+
+和书上的不同（重点看）：
+
+- 书上：两个分支各一个 ret（共 2 个 ret）
+- 你的 gcc：两分支**共享一个 ret**——then 顺流直下到 8 的 ret，else 结尾 `jmp 8` 跳回去（1 个 ret + 1 个 jmp）
+- **功能完全一样，编译器只是选了自己喜欢的排布**。这就是为什么 goto 是"思维模型"：骨架固定（比较 → 取反跳 → 两分支），血肉（ret 放哪）编译器自由发挥。
+
+顺手用 3.6.4 的本事验算：`7e 05` 下一条=4，4+5=9 ✓；`eb f9` f9=-7，下一条=0xf，0xf-7=8 ✓。学过的零件会师了。
+
+#### 无 else 的 if：更简单
+
+```c
+if (test-expr) statement;     →      if (!test-expr) goto done;
+                                     statement;
+                                  done:
+```
+
+你机器上的 clamp_zero（`if (x<0) x=0; return x;`）：
+
+```asm
+clamp_zero:
+   f:  85 c9           test  %ecx,%ecx      # x:0
+  11:  78 03           js    16             # x<0 → 跳去 then（非负则跳过）
+  13:  89 c8           mov   %ecx,%eax      # eax = x
+  15:  c3              retq
+  16:  b8 00 00 00 00  mov   $0x0,%eax      # eax = 0（b8=mov 立即数→eax，后面 4 字节就是 0）
+  1b:  eb f8           jmp   15             # 跳回公共 ret
+```
+
+两个新面孔：① `b8 00 00 00 00`——`$0x0` 这个立即数以 4 个 0 字节嵌在指令里（5 字节长指令）；② 末尾三个 `nop`（90）是对齐填充，函数按 16 字节边界对齐。注意 gcc 这次把 then 块放到了**函数末尾**、向后跳回——排布又不一样，骨架还是一样。3.6.7 的循环全是"无 else"这种形态。
+
+#### 彩蛋：rep; ret
+
+书里提到 gcc 有时生成 `rep; ret` 代替 `ret`：旧 AMD 处理器上，紧跟分支之后的 ret 会被分支预测器错误预测造成停顿，`rep` 前缀是空操作、纯属规避。看到别慌，语义和 ret 完全一样。
+
+#### 为什么这节是 3.6.1-3.6.4 的会师
+
+cmp/test 记账（3.6.1）→ jX 按账跳（3.6.3）→ 偏移编码（3.6.4）→ 组装成 if/else（本节）。后面 3.6.6（条件传送）和 3.6.7（循环）都建立在本节骨架上。
+
+### 3.6.5 自检
+
+| 问题 | 答案 |
+|------|------|
+| if/else 翻译第一步做什么？ | 条件取反：不成立则 goto else |
+| 为什么必须取反？ | CPU 只有条件跳、没有条件执行——跳过 then 只能"不成立时跳走" |
+| 你机器上 absdiff 的 else 块结尾是什么？为什么？ | `jmp 8`——两分支共享一个 ret；书上用两个 ret，都对 |
+| `if (x > 2) val = x - y;` 的 goto 形式？ | `if (x <= 2) goto done; val = x - y; done:` |
+| `b8 00 00 00 00` 是什么？ | `mov $0x0,%eax`——b8 是操作码，后面 4 字节是立即数 0 |
+| 嵌套 if 怎么翻译？ | 从外到内逐层展开，每层一个 label |
+| 书后练习 3.16 / 3.17 / 3.18 | 3.16：&& 短路翻译成 goto；3.17：嵌套 if 翻 goto（本节考试题）；3.18：给汇编反推 C |
+
+> 下节预告：3.6.6 用条件传送实现条件分支——?: 三元表达式和简单 if 在 -O1 以上被 gcc 翻译成无跳转的 cmov，为什么无跳转更快、什么时候编译器才敢用。
